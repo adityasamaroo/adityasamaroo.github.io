@@ -1,7 +1,8 @@
 title: Aditya Samaroo # your name (or website title) here
 logo: # your photo (or logo) here
 description: > # your text below (remove <br> elements if you don't need line breaks)
-Graduate student pursuing a Master's degree in Data Analytics Engineering.
-<br><br>
+    Graduate student pursuing a Master's degree in Data Analytics Engineering
+    <br><br>
+    <a href="https://www.linkedin.com/in/adityasamaroo/">LinkedIn Profile</a>
 theme: jekyll-theme-minimal
 google_analytics: UA-157617588-1 # your Google Analytics tracking ID here
