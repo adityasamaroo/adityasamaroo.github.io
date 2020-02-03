@@ -1,0 +1,122 @@
+---
+title: "Project 1"
+author: "Aditya Samaroo & Yanqing Liu"
+date: "February 25, 2019"
+output:
+  ioslides_presentation: default
+  beamer_presentation: default
+---
+
+```{r setup, include=FALSE}
+library("data.table")
+library("dplyr")
+library("lubridate")
+library("ggplot2")
+library("gridExtra")
+library("kableExtra")
+library("pander")
+library("stringr")
+library("tm")
+library("SnowballC")
+library("wordcloud")
+library("RColorBrewer")
+knitr::opts_chunk$set(echo = FALSE)
+accidents <- read.csv("NYPD_Motor_Vehicle_Collisions.csv")
+accidents = data.table(accidents) ## 1441945 lignes
+accidents = na.omit(accidents) ## 986984 lignes
+```
+
+## Number of Accidents from 2012 to 2018
+```{r, echo=FALSE, message=FALSE, eval=TRUE, warning=F}
+#names(accidents)[names(accidents) == "?..DATE"] = "DATE" 
+counted <- accidents %>% group_by(DATE) %>% count(TIME)
+counted <- counted %>% mutate(dates = as.Date(DATE, format = "%m/%d/%Y"))
+counted_V2 <- counted %>% group_by(dates) %>% summarise(incidents = sum(n))
+```
+
+```{r}
+ggplot(counted_V2, aes(dates, incidents)) + 
+  geom_line() + 
+  theme_minimal() + 
+  xlab("Dates") + ylab("Incidents") 
+# + ggtitle("Number of Accidents from 2012 to 2018")
+```
+
+## Word Cloud of Contributing Factors
+```{r, echo=FALSE}
+data1 = accidents %>% filter(!CONTRIBUTING.FACTOR.VEHICLE.1 %in% c("Unspecified", "1", "80", "", " "))
+reason1 = data.frame(table(data1$CONTRIBUTING.FACTOR.VEHICLE.1))
+```
+```{r}
+wordcloud(words = reason1$Var1, freq = reason1$Freq#, type ="file"
+          , scale = c(1,0.45), min.freq = 1
+          , max.words = Inf, random.order = F, rot.per = 0.1
+          , colors = brewer.pal(8, "Dark2"))
+```
+
+## Relationship between Accident Factor and Vehicle Type
+```{r echo=FALSE, message=FALSE, eval=TRUE, warning=F}
+type1 <- accidents %>% group_by(VEHICLE.TYPE.CODE.1) %>% 
+  count(CONTRIBUTING.FACTOR.VEHICLE.1) %>%
+  arrange(desc(n))
+type1[type1 == ""] <- NA
+type1 <- na.omit(type1)
+type1 <- data.frame(type1)
+temp1 <- filter(type1, CONTRIBUTING.FACTOR.VEHICLE.1 != "Unspecified")
+temp11 <- filter(type1, 
+                 CONTRIBUTING.FACTOR.VEHICLE.1 != "Driver Inattention/Distraction" &
+                   CONTRIBUTING.FACTOR.VEHICLE.1 != "Unspecified" & n > 50)
+```
+```{r}
+p1 <- ggplot(temp11, aes(x = reorder(CONTRIBUTING.FACTOR.VEHICLE.1, n), y = n, 
+                         fill = VEHICLE.TYPE.CODE.1)) + 
+  geom_bar(stat = "identity") + theme_minimal() +
+  theme(axis.text.y = element_text(size = 6), 
+        legend.key.width = unit(0.5,"cm"), legend.key.height=unit(0.5,"cm"), 
+        legend.position = c(.7, .03), legend.justification = c(0, 0),
+        legend.background = element_rect(fill=alpha('white', 0.4)),
+        legend.text = element_text(size = 5.5),
+        legend.title = element_text(size = 6)) + 
+  xlab("Factor") + ylab("Incidents") + 
+  ggtitle("Incidents by Factor for Vehicle 1") +
+  coord_flip() + 
+  guides(fill = guide_legend(ncol = 1, title = "Vehicle Type")) 
+p1
+```
+
+## Insight to Driver Inattention and Vehicle Type
+```{r, echo=FALSE}
+temp111 <- filter(type1, 
+                  CONTRIBUTING.FACTOR.VEHICLE.1 == "Driver Inattention/Distraction",
+                  n > 500)
+```
+
+```{r}
+p11 <- ggplot(temp111, aes(x = reorder(VEHICLE.TYPE.CODE.1, n), y = n)) + 
+  geom_bar(stat = "identity") + theme_minimal() + 
+  theme(axis.text.y = element_text(size = 10)) + 
+  xlab("Vehicle Type") + ylab("Incidents") + 
+  ggtitle("Driver Inattention by Vehicle Type") + coord_flip()
+p11
+```
+
+## Number of Accidents by Time of Day
+```{r, echo=FALSE, message=FALSE, eval=TRUE, warning=F}
+accidents$hour = as.POSIXlt(as.POSIXlt(paste(Sys.Date(), accidents$TIME)))$hour
+accidents$daytime = ifelse(accidents$hour >= 7 & accidents$hour < 12
+                           , "Morning"
+                           , ifelse(accidents$hour >= 12 & accidents$hour < 18
+                                    , "Afternoon"
+                                    , ifelse(accidents$hour >= 18 & accidents$hour < 24
+                                             , "Evening"
+                                             , "Night")))
+
+# accidents_hours <- accidents %>% group_by(BOROUGH, hour) %>% summarise(nb = sum(NUMBER.OF.PERSONS.INJURED, na.rm = TRUE))
+# ggplot(accidents_hours, aes(x = hour, y = BOROUGH, fill = nb)) + geom_tile()
+
+accidents_daytime <- accidents %>% group_by(BOROUGH, daytime) %>% summarise(nb = sum(NUMBER.OF.PERSONS.INJURED, na.rm = TRUE))
+```
+```{r}
+ggplot(accidents_daytime, aes(x = daytime, y = BOROUGH, fill = nb)) + geom_tile()
+
+```
