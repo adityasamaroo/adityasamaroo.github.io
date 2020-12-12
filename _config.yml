@@ -4,6 +4,6 @@ description: > # your text below (remove <br> elements if you don't need line br
     Aspiring Analytics Engineer living in New York City
     <br><br>
     <a href="https://www.linkedin.com/in/adityasamaroo/">LinkedIn Profile</a>
-    <a href= "https://github.com/adityasamaroo/adityasamaroo.github.io/raw/master/pdf/Samaroo_Resume.pdf">Curricula Vitae</a>
+    <a href="https://github.com/adityasamaroo/adityasamaroo.github.io/raw/master/pdf/Samaroo_Resume.pdf">Curricula Vitae</a>
 theme: jekyll-theme-minimal
 google_analytics: UA-157617588-1 # your Google Analytics tracking ID here
