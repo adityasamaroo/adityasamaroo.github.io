@@ -19,8 +19,8 @@
 
 ### Full Projects
 
-- [Project 1 Title](http://example.com/)
-- [Project 2 Title](http://example.com/)
+- [Loan Approval Analysis](https://adityasamaroo.github.io/pdf/credit.html)
+- [UniversityDB Database Design Project](https://adityasamaroo.github.io/pdf/UniversityDB_Samaroo.pdf)
 - [Project 3 Title](http://example.com/)
 - [Project 4 Title](http://example.com/)
 - [Project 5 Title](http://example.com/)
