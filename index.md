@@ -21,13 +21,14 @@
 
 - [Loan Approval Analysis](https://adityasamaroo.github.io/pdf/credit.html)
 - [UniversityDB Database Design Project](https://adityasamaroo.github.io/pdf/UniversityDB_Samaroo.pdf)
-- [Project 3 Title](http://example.com/)
-- [Project 4 Title](http://example.com/)
+- [Solving Sudoku Puzzles using AI](https://adityasamaroo.github.io/pdf/sudoku.pdf)
+- [Analyzing NYC Traffic Patterns](https://adityasamaroo.github.io/pdf/traffic.html)
 - [Project 5 Title](http://example.com/)
 
 ---
 
-
+### Publication
+- ["Using IBM-Q to study and visualize the ground state properties of the Su-Schreiffer-Heeger model"](https://adityasamaroo.github.io/pdf/Samaroo_SSH_IBM.pdf)
 
 
 ---
