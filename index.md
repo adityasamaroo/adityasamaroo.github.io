@@ -19,11 +19,11 @@
 
 ### Full Projects
 
-- [Loan Approval Analysis](https://adityasamaroo.github.io/pdf/credit.html)
-- [UniversityDB Database Design Project](https://adityasamaroo.github.io/pdf/UniversityDB_Samaroo.pdf)
-- [Solving Sudoku Puzzles using AI](https://adityasamaroo.github.io/pdf/sudoku.pdf)
-- [Analyzing NYC Traffic Patterns](https://adityasamaroo.github.io/pdf/traffic.html)
-- [Project 5 Title](http://example.com/)
+- [Loan Approval Analysis](/Loan Approval Analysis/credit.html)
+- [UniversityDB Database Design Project](UniversityDB/UniversityDB_Samaroo.pdf)
+- [Solving Sudoku Puzzles using AI](pdf/sudoku.pdf)
+- [Analyzing NYC Traffic Patterns](NYC Traffic Analysis/traffic.html)
+- [Air Quality Analysis](Air Quality Analysis/AsthmaUSAData.html)
 
 ---
 
