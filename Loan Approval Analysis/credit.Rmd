@@ -1,0 +1,477 @@
+---
+title: "Loan Approval Analysis"
+author: "Aditya Samaroo"
+date: "1/29/2021"
+output: 
+  theme: rmdformats::readthedown
+---
+# Context
+
+This dataset was sourced from Kaggle with the purpose of it being a basis to construct machine learning models to predict whether applicants will be approved or rejected based on their loan application. Predictors such as education level, income, employment length etc., can be used to determine whether or not an applicant will be able to repay their loan. 
+
+# Import Libraries
+```{r setup, message=FALSE, warning=FALSE}
+require(tidyverse)
+require(ggplot2)
+require(scales)
+require(readr)
+require(data.table)
+require(reshape2)
+require(e1071)
+require(class)
+require(naivebayes)
+require(randomForest)
+require(kableExtra)
+```
+
+# Importing Dataset
+```{r message=FALSE, warning=FALSE}
+credit <- read_csv("credit_card/credit_record.csv")
+app    <- read_csv("credit_card/application_record.csv")
+```
+
+## Summary of Data
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+head(credit)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+head(app)
+```
+
+# Renaming Columns
+```{r message=FALSE, warning=FALSE}
+colnames(app) <- (c("ID", "Gender", "Car", "Prop", "Num_Child", 
+                    "Income", "Inc_Cat", "Education", 
+                    "Marital_Stat", "Housing_Type", "Birthday", "Emp_Start", 
+                    "Cell", "Work", "Home", "Email",
+                    "Occupation", "Family"))
+colnames(credit) <-(c("ID", "Month_Start", "Status"))
+```
+
+# Visualizing the Data 
+
+By visualizing the variables of the dataset we can gain insights to what the entire dataset looks like rather than looking into the first couple of rows using the head() function. 
+
+## Gender Distribution
+```{r message=FALSE, warning=FALSE}
+gender_plot <- ggplot(app, aes(Gender)) + 
+  geom_histogram(stat = "count", color = "black", fill = "grey") +
+  theme_classic() + 
+  labs(x = "Gender", 
+       y = "Count", 
+       title = "Gender Distribution") +
+  scale_y_continuous(labels = comma)
+gender_plot
+```
+
+## Age Distribution
+```{r message=FALSE, warning=FALSE}
+age_plot <- app %>% 
+  mutate(age = round(abs(Birthday)/365)) %>% 
+  ggplot(aes(age)) +
+  geom_histogram(stat = "count", color = "black", fill = "grey") + 
+  theme_classic() + 
+  labs(x = "Age", 
+       y = "Count", 
+       title = "Age Distribution") +
+  scale_y_continuous(labels = comma)
+age_plot
+```
+
+## Employment Length Distribution
+```{r message=FALSE, warning=FALSE}
+employment_plot <- app %>%
+  mutate(years = ifelse(Emp_Start >=0, 0, round(abs(Emp_Start)/365))) %>%
+  filter(years > 0) %>%
+  ggplot(aes(years)) + 
+  geom_histogram(stat = "count", color = "black", fill = "grey") +
+  theme_classic() + 
+  labs(x = "Years", 
+       y = "Count", 
+       title = "Employment Length Distribution") +
+  scale_y_continuous(labels = comma)
+ employment_plot
+```
+
+IDs with 0 years of experience are removed from this graph for visual clarity and those applicants are unemployed according to the dataset description.
+
+## Education Type Distribution
+```{r message=FALSE, warning=FALSE}
+education_plot <- app %>% ggplot(aes(Education)) + 
+  geom_histogram(stat = "count", color = "black", fill = "grey") +
+  labs(x = "Education Type", 
+       y = "Count", 
+       title ="Education Type Distribution") + 
+  theme_classic() +
+  scale_y_continuous(labels = comma) + coord_flip()
+education_plot
+```
+
+A majority of the applicants do hold a high school diploma, college degree or higher.
+
+## Credit Length
+```{r message=FALSE, warning=FALSE}
+credit_plot <- credit %>% ggplot(aes(abs(Month_Start)/12)) +
+  geom_histogram(stat = "count", color = "black", fill = "grey") +
+  labs(x = "Credit Length in Years", 
+       y = "Count", 
+       title = "Credit Length Distribution") + 
+  theme_classic() +
+  scale_y_continuous(labels = comma)
+credit_plot
+```
+
+This does not accurately represent each applicant's credit history since it contains multiple credit reports per ID, so when joining we take the longest length to best represent each applicant.
+
+# Join Loan Application to Applicant's Info
+```{r message=FALSE, warning=FALSE}
+begin_month <- credit %>% 
+  group_by(ID) %>% 
+  summarise(min_month = min(Month_Start))
+new_data <- left_join(app, begin_month, by=c("ID"))
+```
+
+By joining datasets we can consolidate the applicant's ID credit history(s) to one loan application.
+
+# Determine Application Approval 
+```{r message=FALSE, warning=FALSE}
+credit$at_risk <- NA
+credit$at_risk[credit$Status == '2'] = 'Yes'
+credit$at_risk[credit$Status == '3'] = 'Yes'
+credit$at_risk[credit$Status == '4'] = 'Yes'
+credit$at_risk[credit$Status == '5'] = 'Yes'
+counter <- credit %>% 
+  group_by(ID) %>% 
+  summarise_all(funs(sum(!is.na(.))))
+counter$at_risk[counter$at_risk > 0]  = 'Yes'
+counter$at_risk[counter$at_risk == 0] = 'No'
+counter$at_risk <- as.factor(counter$at_risk)
+counter         <- counter[c(1,4)]
+new_data        <- inner_join(new_data, counter, by = 'ID')
+new_data$target[new_data$at_risk == 'Yes'] = 1
+new_data$target[new_data$at_risk == 'No']  = 0
+counter %>% group_by(at_risk) %>% count()
+```
+
+There is a small amount of applicants that are at risk of defaulting on a loan. 
+
+# Omit NA values
+```{r message=FALSE, warning=FALSE}
+full_table <- na.omit(new_data)
+```
+
+# Binary Features 
+## Gender
+```{r message=FALSE, warning=FALSE}
+full_table$Gender <- factor(full_table$Gender, labels = c('F','M'))
+full_table %>% group_by(Gender) %>% count()
+```
+## Car
+```{r message=FALSE, warning=FALSE}
+full_table$Car <- factor(full_table$Car, labels = c('No', 'Yes'))
+full_table %>% group_by(Car) %>% count()
+```
+
+## Property
+```{r message=FALSE, warning=FALSE}
+full_table$Prop <- factor(full_table$Prop, labels = c('No','Yes'))
+full_table %>% group_by(Prop) %>% count()
+```
+
+## Email
+```{r message=FALSE, warning=FALSE}
+full_table$Email <- factor(full_table$Email, labels = c('No', 'Yes'))
+full_table %>% group_by(Email) %>% count()
+```
+
+## Work Phone
+```{r message=FALSE, warning=FALSE}
+full_table$Work <- factor(full_table$Work, labels = c('No','Yes'))
+full_table %>% group_by(Work) %>% count()
+```
+
+## Home 
+```{r message=FALSE, warning=FALSE}
+full_table$Home <- factor(full_table$Home, labels = c('No', 'Yes'))
+full_table %>% group_by(Home) %>% count()
+```
+
+## Cell
+```{r message=FALSE, warning=FALSE}
+full_table$Cell <- factor(full_table$Cell, labels = c('Yes'))
+full_table %>% group_by(Cell) %>% count()
+```
+Since all of the applicants indicated that they have a cellphone, we can remove this as a potential feature for our models since they will not have an impact on the model's decision. 
+
+# Continuous Features
+To help improve our models, we can bin data to help remove outliers in the dataset. If there is enough rows of data with the same feature, they will not be binned.
+
+## Number of Children
+```{r message=FALSE, warning=FALSE}
+unique(full_table$Num_Child)
+full_table$Num_Child <- cut(full_table$Num_Child, 
+                            breaks = c(0, 1, 2, 19),
+                            include.lowest = TRUE,
+                            labels = c('0','1','2+'))
+full_table %>% 
+  group_by(Num_Child) %>% 
+  count()
+```
+
+## Income
+```{r message=FALSE, warning=FALSE}
+summary(full_table$Income)
+```
+
+## Age 
+```{r message=FALSE, warning=FALSE}
+full_table$Age <- round(abs(full_table$Birthday)/365)
+summary(full_table$Age)
+```
+
+## Employment Length (Months)
+```{r message=FALSE, warning=FALSE}
+full_table$Emp_Start <- round(full_table$Emp_Start/365, digits = 1)
+full_table$Emp_Start[full_table$Emp_Start > 0] = 0
+full_table$Emp_Start <- abs(full_table$Emp_Start)
+summary(full_table$Emp_Start)
+```
+
+## Family Size - Binned
+```{r message=FALSE, warning=FALSE}
+unique(full_table$Family)
+full_table$Family <- cut(full_table$Family, 
+                            breaks = c(1, 2, 3, 20),
+                            include.lowest = TRUE,
+                            labels = c('1','2','3+'))
+full_table %>%
+  group_by(Family) %>%
+  count()
+```
+
+# Categorical Features
+## Income Category - Binning
+```{r message=FALSE, warning=FALSE}
+unique(full_table$Inc_Cat)
+full_table %>% 
+  group_by(Inc_Cat) %>%
+  count()
+full_table$Inc_Cat[full_table$Inc_Cat   == 'Student' | 
+                     full_table$Inc_Cat == 'Pensioner'] = 'State servant'
+```
+
+### Binned Income Categories
+```{r message=FALSE, warning=FALSE}
+full_table$Inc_Cat <- factor(full_table$Inc_Cat)
+full_table %>% 
+  group_by(Inc_Cat) %>% 
+  count()
+```
+
+## Occupation Type - Binning
+```{r message=FALSE, warning=FALSE}
+unique(full_table$Occupation)
+full_table$Occupation[full_table$Occupation   == 'Laborers' | 
+                        full_table$Occupation == 'Low-skill Laborers' |
+                        full_table$Occupation == 'Cleaning staff' |
+                        full_table$Occupation == 'Cooking staff' |
+                        full_table$Occupation == 'Drivers' |
+                        full_table$Occupation == 'Security staff' |
+                        full_table$Occupation == 'Waiters/barmen staff'] = 'Laborer'
+full_table$Occupation[full_table$Occupation   == 'Accountants' |
+                        full_table$Occupation == 'Core staff' |
+                        full_table$Occupation == 'HR staff' |
+                        full_table$Occupation == 'Medicine staff' |
+                        full_table$Occupation == 'Private service staff' |
+                        full_table$Occupation == 'Realty agents' |
+                        full_table$Occupation == 'Sales staff' |
+                        full_table$Occupation == 'Secretaries'] = 'Office'
+full_table$Occupation[full_table$Occupation   == 'Managers' |
+                        full_table$Occupation == 'High skill tech staff'|
+                        full_table$Occupation == 'IT staff'] = 'High Tech'
+```
+
+### Binned Occupation Type
+```{r message=FALSE, warning=FALSE}
+full_table$Occupation <- factor(full_table$Occupation)
+full_table %>% 
+  group_by(Occupation) %>% 
+  count()
+```
+
+## Education Type
+```{r message=FALSE, warning=FALSE}
+full_table$Education[full_table$Education == 'Academic degree'] = 
+  'Higher education'
+full_table$Education <- factor(full_table$Education)
+full_table %>% 
+  group_by(Education) %>% 
+  count()
+```
+
+## Housing Type
+```{r message=FALSE, warning=FALSE}
+full_table$Housing_Type <- factor(full_table$Housing_Type)
+full_table %>% 
+  group_by(Housing_Type) %>%
+  count()
+```
+
+## Marital Status
+```{r message=FALSE, warning=FALSE}
+full_table$Marital_Stat <- factor(full_table$Marital_Stat)
+full_table %>% 
+  group_by(Marital_Stat) %>% 
+  count()
+```
+
+# Examine Cleaned Data
+```{r message=FALSE, warning=FALSE}
+reduced_table <- full_table[-c(1, 11, 13, 19, 20)]
+summary(reduced_table)
+```
+
+```{r message=FALSE, warning=FALSE}
+ggplot(full_table, aes(x = at_risk, y = Income)) + 
+  geom_boxplot() + 
+  facet_wrap(~Gender) +
+  labs(title = "Credit Risk Distribution Based on Gender and Income Distribuiton", 
+       x = "Credit Risk", 
+       y = "Income") +
+  theme_classic()
+```
+
+```{r message=FALSE, warning=FALSE}
+ggplot(full_table, 
+       aes(x = Age, y = Income, color = at_risk)) +
+  geom_violin() 
+```
+
+
+# Sampling Data
+The dataset is split 70/30 at a random since the number of at risk applicants are so low. 
+
+```{r message=FALSE, warning=FALSE}
+set.seed(920)
+sample <- sample.int(n = nrow(full_table), size = floor(.70*nrow(full_table)), replace = F)
+train.set <- reduced_table[sample, ]
+test.set  <- reduced_table[-sample, ]
+```
+
+# Training Models for Classification
+
+The methods that will be implemented to classify and predict if an applicant is eligible or not are Logistic Regression, Support Vector Machines, Naive Bayes, KNN, and Random Forest (Decision Trees).
+
+## Logistic Regression
+
+Logistic regression predicts the value of a categorical variable by finding the relationship between the categorical variable and the independent variables (predictors). They are mainly used in binary classification scenarios. 
+
+```{r message=FALSE, warning=FALSE}
+lm.model <- glm(formula = target ~ ., 
+                family = binomial(link='logit'), 
+                data = train.set)
+summary(lm.model)
+```
+
+### Predict Logistic Regression Model Performance
+```{r message=FALSE, warning=FALSE}
+log.predict <- predict(lm.model, test.set, type = "response")
+log.prediction.rd <- ifelse(log.predict > 0.5, 1, 0)
+print(paste('Accuracy:', 1-mean(log.prediction.rd != test.set$target)))
+```
+
+The logistic regression model does a good job of classifying the different applicants regardless of the skewed sample size. 
+
+## Support Vector Machines (SVM)
+
+Support Vector Machines represent data points as objects in space. The data is then split by a function created by the SVM to classify the different spaces according to the target outputs. SVMs are more efficient when using data with high dimensionality. 
+
+```{r message=FALSE, warning=FALSE}
+svmfit = svm(target ~ ., 
+             data = train.set, 
+             kernel = "linear", 
+             type = "C-classification")
+summary(svmfit)
+```
+
+### SVM Performance
+```{r message=FALSE, warning=FALSE}
+pred       <- predict(svmfit, test.set)
+svm.table0 <- table(test.set$target, pred)
+paste("Accuracy:", sum(diag(svm.table0))/sum(svm.table0))
+```
+
+The SVM classification technique also returned a comparable accuracy, model tuning and parameter adjustment can give way to a slightly higher accuracy.
+
+## Using an Optimal SVM
+```{r message=FALSE, warning=FALSE}
+optimal.svm <- svm(as.factor(target) ~ .,
+                   data = train.set,
+                   type = "C-classification",
+                   kernel = "linear",
+                   gamma = 0.1,
+                   cost = 1)
+summary(optimal.svm)
+```
+
+### Optimal SVM Performance
+```{r message=FALSE, warning=FALSE}
+svm.predict <- predict(optimal.svm, test.set[,-16])
+svm.table <- table(svm.predict, test.set$target)
+paste("Accuracy:", sum(diag(svm.table))/sum(svm.table))
+```
+
+## K-Nearest Neighbors (KNN)
+
+K-nearest neighbors method is a classification method that relies on the distance between datapoints in order to classify new data points. 
+
+```{r message=FALSE, warning=FALSE}
+train_l     <- train.set[c(5,10,17)]
+test_l      <- test.set[c(5,10,17)]
+train_label <- train.set$target
+test_label  <- test.set$target
+knn.model   <- knn(train = train_l, test = test_l, cl = train_label, k = 132)
+knn.model2  <- knn(train = train_l, test = test_l, cl = train_label, k = 133)
+
+knn.table   <- table(knn.model, test_label)
+knn.table2  <- table(knn.model2, test_label)
+paste("Accuracy for k = 132:", sum(diag(knn.table))/sum(knn.table))
+paste("Accuracy for k = 133:", sum(diag(knn.table2))/sum(knn.table2))
+```
+
+## Naive Bayes (NB)
+
+Naive Bayes uses the Bayes Theorem to solve classification problems by means of conditional probability. This is done by considering the predictor variable independent of one another.
+
+```{r message=FALSE, warning=FALSE}
+nb.model   <- naiveBayes(as.factor(target) ~ ., 
+                         data = train.set)
+nb.model
+```
+
+### NB Model Performance
+```{r message=FALSE, warning=FALSE}
+nb.predict <- predict(nb.model, test.set)
+nb.table   <- table(test.set$target, nb.predict)
+paste("Accuracy:", sum(diag(nb.table))/sum(nb.table))
+```
+
+## Random Forest Model 
+
+Random Forests is a classification method that uses a large number of decision trees. These decision trees are used to identify a classification consensus by selecting a common output from the data. 
+
+```{r message=FALSE, warning=FALSE}
+rf.model   <- randomForest(as.factor(target) ~.,
+                           data = train.set)
+rf.model
+```
+
+### Random Forest Model Performance
+```{r message=FALSE, warning=FALSE}
+rf.predict <- predict(rf.model, test.set)
+rf.table   <- table(test.set$target, rf.predict)
+paste("Accuracy:", sum(diag(nb.table))/sum(nb.table))
+```
+
+Overall the accuracies of each of the classification methods are negligible. Some of the parameters could be tuned in order to improve their performance. 
