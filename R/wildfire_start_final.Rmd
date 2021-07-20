@@ -1,0 +1,742 @@
+---
+title: "Final Project Markdown"
+author: "Aditya Samaroo"
+date: "3/27/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(dbplyr)
+library(purrr)
+library(xts)
+library(ggthemes)
+library(maps)
+library(mapdata)
+library(leaflet)
+library(tidyverse)
+library(caret)
+library(rpart.plot)
+library(knitr)
+library(kableExtra)
+library(randomForest)
+library(e1071)
+library(klaR)
+library(nnet)
+library(pROC)
+library(neuralnet)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wildfires  <- read_csv("us_fires_1.csv", na = "empty")
+wildfires2 <- read_csv("us_fires_2.csv", na = "empty")
+wildfires3 <- read_csv("us_fires_3.csv", na = "empty")
+wildfires4 <- read_csv("us_fires_4.csv", na = "empty")
+wildfires5 <- read_csv("us_fires_5.csv", na = "empty")
+wildfires6 <- read_csv("us_fires_6.csv", na = "empty")
+wildfires7 <- read_csv("us_fires_7.csv", na = "empty")
+fires <- as.data.frame(rbind(wildfires, wildfires2, wildfires3, 
+               wildfires4, wildfires5, wildfires6, wildfires7))
+head(fires)
+set.seed(123)
+index <- sample(c(TRUE, FALSE), nrow(fires), replace = TRUE, prob = c(0.2, 0.8))
+fires <- fires[index, ]
+```
+# Preliminary Visualizations
+## Missing Values
+
+```{r}
+NA_amount <- data.frame(name = c(0), n = c(0), percent = (0))
+for (i in 1:length(fires)){
+  NA_amount[i,1] <- colnames(fires[i])
+  NA_amount[i,2] <- sum(is.na(fires[c(i)]))
+  NA_amount[i,3] <- (sum(is.na(fires[c(i)]))/nrow(fires))*100
+}
+NA_amount <- filter(NA_amount, n > 0)
+ggplot(NA_amount, aes(x = name, y = percent)) + 
+  geom_bar(stat = "identity", fill = "black") +
+  labs(x = "Column Name", y = "Percentage", 
+       title = "% of Missing Values in the Dataset by Column Name") +
+  theme_calc() +
+  theme(axis.text.x = element_text(angle = 50, hjust = 1, size = 8))
+```
+
+## By Year
+```{r}
+fires %>% 
+    group_by(fire_year) %>%
+    summarize(n_fires = n()) %>%
+    ggplot(aes(x = fire_year, y = n_fires/1000)) + 
+  geom_bar(stat = "identity", fill = "black") +
+  geom_smooth(method = 'lm', se = FALSE, 
+              linetype = 'dashed', size = 0.4, color = "red") +
+  labs(x = "Year", y = "Number of wildfires (thousands)", 
+       title = "US Wildfires by Year") + 
+  theme_calc()
+```
+
+## By Size
+```{r}
+fires %>% group_by(gr = cut(fire_size, breaks = c(0, 0.5, 1, 
+                                                  2, 3, 4,
+                                                  5, 6, 7, Inf ),
+                            labels = c("0 - 0.5", "0.5 - 1", "1 - 2", 
+                                       "2 - 3", "3 - 4", "4 - 5", 
+                                       "5 - 6", "6 - 7", "7 +"))) %>%
+  summarise(n_fires = n()) %>% 
+  ggplot(aes(x = gr, y = n_fires/1000)) +
+  geom_bar(stat = "identity", fill = "black") +
+  labs(x = "Fire Size (Acres)", y = "Number of Wildfires (thousands)", 
+       title = "Wildfire Sizes 1995 to 2015") + 
+  geom_text(aes(label = round(n_fires/1000,1)),
+            color = "black", vjust = -0.2, size = 3) +
+  theme_calc()
+```
+
+### Distribution of the fire sizes
+```{r}
+ggplot(fires, aes(x = "", y = fire_size)) +
+  geom_boxplot() +
+  theme_classic()
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(fires, aes(x = fire_size)) +
+  geom_density(fill = "gray", alpha = 0.5) +
+  labs(x = "Fire Size (Acres)", y = "Density", 
+       title = "Density Plot of Wildfires by Size") +
+  theme_classic()
+```
+
+```{r}
+summary(fires$fire_size)
+```
+
+```{r}
+outliers <- boxplot(fires$fire_size,plot = FALSE)$out
+fire_out <- fires[-which(fires$fire_size %in% outliers),]
+ggplot(fire_out, aes(x = "", y = fire_size)) +
+  geom_boxplot() +
+  theme_classic()
+```
+
+```{r}
+summary(fire_out$fire_size)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(fire_out, aes(x = fire_size)) +
+  geom_density(fill = "black", alpha = 0.3) +
+  labs(x = "Fire Size (Acres)", y = "Density", 
+       title = "Density Plot of Wildfires by Size without Outliers") +
+  theme_classic()
+```
+
+## By Size Class
+```{r}
+fires %>% group_by(fire_size_class) %>% 
+  summarise(n_fires = n()) %>%
+  ggplot(aes(x = fire_size_class, y = n_fires/1000)) +
+  geom_bar(stat = "identity", fill = "black") +
+  labs(x = "Fire Size Class", y = "Number of Wildfires (thousands)", 
+       title = "Wildfires by Class Size 1995 - 2015") +
+  geom_text(aes(label = round(n_fires/1000,1)), 
+            color = "black", vjust = -0.2) +
+  theme_calc()
+```
+
+## By Cause
+```{r}
+fires %>%
+    group_by(stat_cause_descr) %>%
+    summarize(n_fires = n()/1000) %>%
+    ggplot(aes(x = reorder(stat_cause_descr, n_fires), y = n_fires)) +
+    geom_bar(stat = "identity", fill = "black") + 
+    coord_flip() + 
+    labs(x = "", y = "Number of fires (thousands)", 
+         title = "US Wildfires by Cause 1992 to 2015") +
+  theme_calc()
+```
+
+## Same Graph Rotated
+```{r}
+fires %>% group_by(stat_cause_descr) %>%
+    summarize(n = n()) %>%
+    ggplot(aes(x = reorder(stat_cause_descr, -n), y = n/1000)) + 
+    geom_bar(stat = "identity", fill = "black") + 
+    labs(x = "", y = "# of instances (thousands)", 
+         title = "Wildfire Causes") +
+  geom_text(aes(label=(round(n/1000,1))),
+            vjust = -0.2, color = "black", size = 3) +
+  theme_calc() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+## By State
+```{r}
+state.abb    <- append(state.abb, c("DC", "PR"))
+state.name   <- append(state.name, c("District of Columbia", "Puerto Rico"))
+fires$region <- map_chr(fires$state, function(x) { 
+  tolower(state.name[grep(x,state.abb)]) 
+  })
+state_map <- map_data("state")
+fires %>% 
+    select(region) %>%
+    group_by(region) %>%
+    summarize(n = n()) %>%
+    right_join(state_map, by = "region") %>%
+    ggplot(aes(x = long, y = lat, group = group, fill = n)) + 
+    geom_polygon() + 
+    geom_path(color = "white") + 
+    scale_fill_continuous(low = "#edb500", 
+                          high = "#b32424",
+                          name = "Number of Fires") + 
+    theme_map() + 
+    coord_map("albers", lat0 = 30, lat1 = 40) + 
+    ggtitle("US Wildfires from 1995 - 2015") + 
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Top 10 States
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fires %>% 
+  group_by(state) %>%
+  summarise(n_fires = n()) %>%
+  arrange(-n_fires) %>%
+  top_n(10) %>%
+  ggplot(aes(x = reorder(state, -n_fires), y = n_fires/1000)) +
+  geom_bar(stat = "identity", fill ="black") +
+  geom_text(aes(label=(round(n_fires/1000,1))),
+            vjust = -0.2, color = "black", size = 3) +
+  labs(x = "State", y = "Number of Wildfires (thousands)", 
+       title = "Top 10 States Where Wildfires Occur") +
+  theme_calc() 
+```
+
+## Focus on Specific State
+
+```{r}
+fires %>% filter(state == "CA") %>%
+  group_by(stat_cause_descr) %>%
+  summarise(n_fires = n()) %>%
+  ggplot(aes(x = reorder(stat_cause_descr, -n_fires), y = n_fires/1000)) +
+  geom_bar(stat="identity", fill = "black") +
+  labs(x = "", y = "Number of Wildfires", 
+       title = "Wildfires by Cause in California") + 
+  theme_calc() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+fires %>% filter(state == "GA") %>%
+  group_by(stat_cause_descr) %>%
+  summarise(n_fires = n()) %>%
+  ggplot(aes(x = reorder(stat_cause_descr, -n_fires), y = n_fires/1000)) +
+  geom_bar(stat="identity", fill = "black") +
+  labs(x = "", y = "Number of Wildfires", 
+       title = "Wildfires by Cause in Georgia") + 
+  theme_calc() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+fires %>% filter(state == "TX") %>%
+  group_by(stat_cause_descr) %>%
+  summarise(n_fires = n()) %>%
+  ggplot(aes(x = reorder(stat_cause_descr, -n_fires), 
+             y = n_fires/1000)) +
+  geom_bar(stat="identity", fill = "black") +
+  labs(x = "", y = "Number of Wildfires", 
+       title = "Wildfires by Cause in Texas") + 
+  theme_calc() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+fires %>% filter(state == "TX" | state == "GA" | state == "CA") %>%
+  group_by(stat_cause_descr,state) %>%
+  summarise(n_fires = n()) %>%
+  ggplot(aes(x = reorder(stat_cause_descr, -n_fires), 
+             y = n_fires/1000, fill = state)) +
+  geom_bar(stat="identity", position = "dodge") +
+  labs(x = "", y = "Number of Wildfires (thousandsCr)", 
+       title = "Wildfires by Cause in the Top 3 Wildfire States") +
+  scale_fill_manual("State", values = c("#a80e0e","#d50101","#e09292")) +
+  theme_calc() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+## By Cause in Each State 
+```{r}
+plot_feature_state <- function(cause) {
+    fires %>% 
+        filter(stat_cause_descr == cause) %>%
+        select(region) %>%
+        group_by(region) %>%
+        summarize(n = n()) %>%
+        right_join(state_map, by = "region") %>%
+        ggplot(aes(x = long, y = lat, group = group, fill = n)) + 
+        geom_polygon() + 
+        geom_path(color = "white") + 
+        scale_fill_continuous(low = "orange", 
+                          high = "darkred",
+                          name = "Number of fires") + 
+        theme_map() + 
+        coord_map("albers", lat0 = 30, lat1 = 40) + 
+        ggtitle(paste0("US Wildfires Caused by ", cause, "")) + 
+        theme(plot.title = element_text(hjust = 0.5))
+}
+```
+
+```{r}
+plot_feature_state(cause = "Arson")
+plot_feature_state(cause = "Campfire")
+plot_feature_state(cause = "Children")
+plot_feature_state(cause = "Debris Burning")
+plot_feature_state(cause = "Equipment Use")
+plot_feature_state(cause = "Fireworks")
+plot_feature_state(cause = "Lightning")
+plot_feature_state(cause = "Miscellaneous")
+plot_feature_state(cause = "Missing/Undefined")
+plot_feature_state(cause = "Powerline")
+plot_feature_state(cause = "Smoking")
+plot_feature_state(cause = "Structure")
+plot_feature_state(cause = "Railroad")
+```
+
+# Data Manipulation
+## Time Duration
+```{r}
+fires_times <- fires[c(20:23,26:28)]
+fires_times$dt <- format(as.POSIXct(sprintf("%04d",
+                                            fires_times$discovery_time),
+                                                 format = "%H%M"),"%H:%M")
+fires_times$ct <- format(as.POSIXct(sprintf("%04d", fires_times$cont_time),
+                                            format = "%H%M"),"%H:%M")
+fires_times$ddt <- as.POSIXct(paste(fires_times$discovery_date,
+                                    fires_times$dt),
+                              format = "%Y-%m-%d %H:%M")
+fires_times$cdt <- as.POSIXct(paste(fires_times$cont_date, 
+                                              fires_times$ct),
+                                        format = "%Y-%m-%d %H:%M")
+fires_times$duration <- difftime(fires_times$cdt, 
+                                 fires_times$ddt,
+                                 units = "hours")
+fires_times$duration <- as.numeric(fires_times$duration)
+head(fires_times)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fires_times %>% 
+  group_by(gr = cut(duration, breaks = c(0, 5, 10, 15, 20, 25, 30, Inf), 
+                    labels = c("0 - 5", "5 - 10", "10 - 15",
+                               "15 - 20", "20 - 25", "25 - 30", "30 +"))) %>%
+  summarise(n_duration = n()) %>% na.omit() %>%
+  ggplot(aes(x = gr, y = n_duration/1000)) +
+  geom_bar(stat = "identity", fill = "black") +
+  labs(x = "Duration (hours)", y = "Number of Wildfires (thousands)",
+       title = "Number of Wildfires by Duration") +
+  theme_calc()
+```
+
+## Correlation Matrix 
+```{r}
+f_corr  <- cbind(fires[c(20,22,24,29,31,32,33)], fires_times[c(12)])
+corrmat <- round(cor(f_corr, use = "complete.obs"), 2)
+cormat  <- melt(corrmat)
+head(cormat)
+```
+
+```{r}
+ggplot(cormat, aes(x = Var1, y = Var2, fill = value)) + 
+  geom_tile() +
+  geom_text(data = cormat, 
+            aes(y = Var2, label = value), 
+            color = "white") +
+  scale_fill_continuous(low = "#e09292",
+                        high = "#a80e0e",
+                        name = "Correlation") +
+  labs(x = "", y = "", title = "Correlation Matrix of Select Variables") +
+  theme_calc() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(angle = -45, vjust = 1))
+```
+# Classification algorithms
+## Simple decision tree using one feature
+```{r}
+fires$stat_cause_descr <- as.factor(fires$stat_cause_descr)
+
+set.seed(123)
+train_index <- sample(c(1:dim(fires)[1]), dim(fires)[1]*0.6)
+
+x_train <- as.data.frame(fires[train_index, features])
+colnames(x_train) <- "fire_size"
+y_train <- fires$stat_cause_descr[train_index]
+x_test <- as.data.frame(fires[-train_index, features])
+colnames(x_test) <- "fire_size"
+y_test <- fires$stat_cause_descr[-train_index]
+```
+# Naive Rule
+```{r}
+preds <- rep('Debris Burning', length(y_test))
+
+test_set_acc <- round(sum(y_test == preds)/length(preds), 4)
+print(paste(c("Accuracy:" , test_set_acc)))
+```
+
+# Decision Tree
+```{r}
+# create the training control object.
+tr_control <- trainControl(method = 'cv', number = 3)
+
+features <- c('fire_year', 'fire_size', 'discovery_doy', 'latitude', 'longitude')
+
+x_train <- as.data.frame(fires[train_index, features])
+colnames(x_train) <- c("fire_year","fire_size","discovery_doy","latitude","longitude")
+y_train <- fires$stat_cause_descr[train_index]
+
+x_test <- as.data.frame(fires[-train_index, features])
+colnames(x_test) <- c("fire_year","fire_size","discovery_doy","latitude","longitude")
+y_test <- fires$stat_cause_descr[-train_index]
+```
+# Train the decision tree model
+```{r}
+set.seed(123)
+dtree <- train(x = x_train,
+               y = y_train,
+               method = 'rpart',
+               tuneLength = 8,
+               trControl = tr_control)
+```
+# Tree Plot
+```{r}
+rpart.plot(dtree$finalModel)
+```
+# make predictions using test set
+```{r}
+preds <- predict(dtree, newdata = x_test)
+```
+# calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+```
+# Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', 
+                        limits = c(0,1), name = 'Relative Frequency') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - Decision Tree')
+```
+# Random Forest
+```{r}
+set.seed(123)
+rfmodel <- train(x = x_train,
+                 y = y_train,
+                 method = 'rf',
+                 tuneLength = 3,
+                 ntree = 100,
+                 trControl = tr_control)
+rfmodel
+```
+# make predictions using test set
+```{r}
+preds <- predict(rfmodel, newdata = x_test)
+```
+# calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+```
+## Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', limits = c(0,1), name = 'Relative Frequency') + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - Random Forest (100 Trees)')
+```
+## Multiclass ROC area under the curve
+```{r}
+prob <- predict(rfmodel, newdata= x_test, type = "prob")
+r <- multiclass.roc(y_test, prob)
+r
+```
+# Boosting
+```{r}
+fires$burn_time <- fires$cont_date - fires$discovery_date
+
+features <- c('fire_year', 'fire_size', 'discovery_doy', 'latitude', 'longitude','burn_time')
+
+x_train <- as.data.frame(fires[train_index, features])
+colnames(x_train) <- c("fire_year","fire_size","discovery_doy","latitude","longitude","burn_time")
+y_train <- fires$stat_cause_descr[train_index]
+
+x_test <- as.data.frame(fires[test_index, features])
+colnames(x_test) <- c("fire_year","fire_size","discovery_doy","latitude","longitude","burn_time")
+y_test <- fires$stat_cause_descr[test_index]
+```
+# knn
+```{r}
+set.seed(123)
+knn <- train(  x = x_train,
+               y = y_train,
+               method = 'knn',
+               tuneLength = 8,
+               trControl = tr_control,
+               preProcess = c("center", "scale"))
+
+knn
+```
+## make predictions using test set
+```{r}
+preds <- predict(knn, newdata = x_test)
+```
+## calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+```
+## Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', limits = c(0,1), name = 'Relative Frequency') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - K Nearest Neighbours')
+```
+## Multiclass ROC area under the curve
+```{r}
+prob <- predict(knn, newdata= x_test, type = "prob")
+r <- multiclass.roc(y_test, prob)
+r
+```
+# Naive Bayes Classifier
+```{r}
+set.seed(123)
+nb <- train(  x = x_train,
+               y = y_train,
+               method = 'nb',
+               tuneLength = 8,
+               trControl = tr_control,
+               preProcess = c("center", "scale"))
+nb
+```
+## make predictions using test set
+```{r}
+preds <- predict(nb, newdata = x_test)
+```
+## calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+```
+## Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', limits = c(0,1), name = 'Relative Frequency') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - Naive Bayes Classifier')
+```
+## Multiclass ROC area under the curve
+```{r}
+prob <- predict(nb, newdata= x_test, type = "prob")
+r <- multiclass.roc(y_test, prob)
+r
+```
+# Logistic Regression 
+```{r}
+set.seed(123)
+log_reg <- train(  x = x_train,
+               y = y_train,
+               method = 'multinom',
+               #tuneLength = 8,
+               trControl = tr_control
+               #preProcess = c("center", "scale"
+               )
+log_reg
+```
+## make predictions using test set
+```{r}
+preds <- predict(nb, newdata = x_test)
+```
+## calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+```
+## Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', limits = c(0,1), name = 'Relative Frequency') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - Multinomial Regression')
+```
+## Multiclass ROC area under the curve
+```{r}
+prob <- predict(log_reg, newdata= x_test, type = "prob")
+r <- multiclass.roc(y_test, prob)
+r
+```
+# Linear Discriminant Analysis
+```{r}
+set.seed(123)
+lda <- train(  x = x_train,
+               y = y_train,
+               method = 'lda',
+               #tuneLength = 8,
+               trControl = tr_control
+               #preProcess = c("center", "scale"
+               )
+lda 
+```
+## make predictions using test set
+```{r}
+preds <- predict(lda, newdata = x_test)
+```
+## calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+```
+## Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', limits = c(0,1), name = 'Relative Frequency') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - Linear Discriminant Analysis')
+```
+## Multiclass ROC area under the curve
+```{r}
+prob <- predict(lda, newdata= x_test, type = "prob")
+r <- multiclass.roc(y_test, prob)
+r
+```
+# Neural Network
+```{r}
+set.seed(123)
+nn <- train(x = x_train, 
+            y = y_train, 
+            method = 'nnet', 
+            #linear.output = F,
+            trControl = tr_control
+            )
+```
+## make predictions using test set
+```{r}
+preds <- predict(nn, newdata = x_test)
+```
+## calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+```
+
+## Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', limits = c(0,1), name = 'Relative Frequency') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - Neural Network')
+```
+## Multiclass ROC area under the curve
+```{r}
+prob <- predict(nn, newdata= x_test, type = "prob")
+r <- multiclass.roc(y_test, prob)
+r
+```
+## Reducing the number of categories in the output variable from 13 to 4
+```{r}
+y_train <- ifelse(y_train == "Lightning", 0, ifelse(y_train == "Structure", 1, ifelse(y_train == "Fireworks", 2, ifelse(y_train == "Powerline", 3, ifelse(y_train == "Railroad", 4, ifelse(y_train == "Smoking", 5, ifelse(y_train == "Children", 6, ifelse(y_train =="Campfire", 7, ifelse(y_train == "Equipment Use", 8, ifelse(y_train == "Debris Burning", 9, ifelse(y_train == "Arson", 10, ifelse(y_train == "Miscellaneous", 11,12))))))))))))
+y_train <- as.factor(ifelse(y_train == 0, "Natural", ifelse(y_train == 1 | y_train == 2 | y_train == 3 | y_train == 4 | y_train == 5 | y_train == 6 | y_train == 7 | y_train == 8 | y_train == 9, "Accidental", ifelse(y_train == 10, "Malicious", "Other"))))
+
+y_test <- ifelse(y_test == "Lightning", 0, ifelse(y_test == "Structure", 1, ifelse(y_test == "Fireworks", 2, ifelse(y_test == "Powerline", 3, ifelse(y_test == "Railroad", 4, ifelse(y_test == "Smoking", 5, ifelse(y_test == "Children", 6, ifelse(y_test =="Campfire", 7, ifelse(y_test == "Equipment Use", 8, ifelse(y_test == "Debris Burning", 9, ifelse(y_test == "Arson", 10, ifelse(y_test == "Miscellaneous", 11,12))))))))))))
+y_test <- as.factor(ifelse(y_test == 0, "Natural", ifelse(y_test == 1 | y_test == 2 | y_test == 3 | y_test == 4 | y_test == 5 | y_test == 6 | y_test == 7 | y_test == 8 | y_test == 9, "Accidental", ifelse(y_test == 10, "Malicious", "Other"))))
+
+```
+# Random Forest(Reduced Categories)
+```{r}
+set.seed(123)
+rfmodel <- train(x = x_train,
+                 y = y_train,
+                 method = 'rf',
+                 tuneLength = 3,
+                 ntree = 100,
+                 trControl = tr_control)
+```
+## Make predictions using test set
+```{r}
+preds <- predict(rfmodel, newdata = x_test)
+```
+## calculate accuracy on test set
+```{r}
+test_set_acc <- sum(y_test == preds)/length(preds)
+print(paste(c("Accuracy:" , round(test_set_acc, 4))))
+print(rfmodel$resample)
+```
+## Confusion Matrix
+```{r}
+confusionMatrix(y_test, preds)$table %>%
+    prop.table(margin = 1) %>%
+    as.data.frame.matrix() %>%
+    rownames_to_column(var = 'actual') %>%
+    gather(key = 'prediction', value = 'freq',-actual) %>%
+    ggplot(aes(x = actual, y = prediction, fill = freq)) +
+    geom_tile() +
+    geom_text(aes(label = round(freq, 2)), size = 3, color = 'gray20') + 
+    scale_fill_gradient(low = 'yellow', high = 'red', 
+                        limits = c(0,1), name = 'Relative Frequency') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle('Confusion Matrix - Random Forest(Only 4 Casses)')
+```
