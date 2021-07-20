@@ -1,0 +1,269 @@
+---
+title: "Mini project"
+author: "Group 01: Aditya Samaroo & Yanqing Liu"
+date: "01/03/2019"
+output:
+  html_document:
+    highlight: haddock
+    number_sections: no
+    self_contained: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    toc: yes
+    toc_depth: '5'
+---
+```{r, echo=TRUE, message=FALSE, results='hide', eval=TRUE, warning=F}
+library("data.table")
+library("dplyr")
+library("lubridate")
+library("ggplot2")
+library("gridExtra")
+library("kableExtra")
+library("pander")
+library("stringr")
+library("tm")
+library("SnowballC")
+library("wordcloud")
+library("RColorBrewer")
+```
+
+```{r, echo=TRUE, message=FALSE, results='hide', eval=TRUE, warning=F}
+accidents <- read.csv("NYPD_Motor_Vehicle_Collisions.csv")
+accidents = data.table(accidents) ## 1441945 lines
+accidents = na.omit(accidents) ## 986984 lines
+```
+
+# World cloud for the first contribution factor of vehicle
+```{r, echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+data1 = accidents %>% filter(!CONTRIBUTING.FACTOR.VEHICLE.1 %in% 
+                               c("Unspecified", "1", "80", "", " "))
+reason1 = data.frame(table(data1$CONTRIBUTING.FACTOR.VEHICLE.1))
+
+wordcloud(words = reason1$Var1, freq = reason1$Freq#, type ="file"
+          , scale = c(2,0.8), min.freq = 1
+          , max.words = Inf, random.order = F, rot.per = 0.1
+          , colors = brewer.pal(8, "Dark2"))
+```
+<a href="#header">back to top</a>
+
+> Please note: Driver inattention or distraction is the most important factor to vehicle collisions.
+The second important factor is the Failure to Yield Right-of-way.
+Here, the size of word shows the importance.
+
+</br></br></br></br>
+
+# Trend of accidents by date
+```{r, echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+counted <- accidents %>% group_by(DATE) %>% count(TIME)
+counted <- counted %>% mutate(dates = as.Date(DATE, format = "%m/%d/%Y"))
+counted_V2 <- counted %>% group_by(dates) %>% summarise(incidents = sum(n))
+ggplot(counted_V2, aes(dates, incidents)) + 
+  geom_line() + 
+  theme_minimal() + 
+  xlab("Dates") + ylab("Incidents") + 
+  ggtitle("Number of Accidents from 2012 to 2018")
+```
+<a href="#header">back to top</a>
+
+> Please note: Less accidents recent years than before, normally more accidents during the summer
+
+</br></br>
+
+# Relationship between type of vehicle and accident
+
+## Using first vehicle code type and contribution factor 1
+```{r echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+type1 <- accidents %>% group_by(VEHICLE.TYPE.CODE.1) %>% 
+  count(CONTRIBUTING.FACTOR.VEHICLE.1) %>%
+  arrange(desc(n))
+type1[type1 == ""] <- NA
+type1 <- na.omit(type1)
+type1 <- data.frame(type1)
+temp1 <- filter(type1, CONTRIBUTING.FACTOR.VEHICLE.1 != "Unspecified")
+temp11 <- filter(type1, 
+                 CONTRIBUTING.FACTOR.VEHICLE.1 != "Driver Inattention/Distraction" &
+                   CONTRIBUTING.FACTOR.VEHICLE.1 != "Unspecified" & n > 50)
+
+p1 <- ggplot(temp11, aes(x = reorder(CONTRIBUTING.FACTOR.VEHICLE.1, n), y = n, 
+                         fill = VEHICLE.TYPE.CODE.1)) + 
+  geom_bar(stat = "identity") + theme_minimal() +
+  theme(axis.text.y = element_text(size = 6), 
+        legend.key.width = unit(0.2,"cm"), legend.key.height=unit(0.2,"cm"), 
+        legend.position = c(.55, .03), legend.justification = c(0, 0),
+        legend.background = element_rect(fill=alpha('white', 0.4)),
+        legend.text = element_text(size = 5.5),
+        legend.title = element_text(size = 6)) + 
+  xlab("Factor") + ylab("Incidents") + 
+  ggtitle("Incidents by Factor for Vehicle 1") +
+  coord_flip() + 
+  guides(fill = guide_legend(ncol = 1, title = "Vehicle Type")) 
+p1
+
+temp111 <- filter(type1, 
+                  CONTRIBUTING.FACTOR.VEHICLE.1 == "Driver Inattention/Distraction",
+                  n > 500)
+p11 <- ggplot(temp111, aes(x = reorder(VEHICLE.TYPE.CODE.1, n), y = n)) + 
+  geom_bar(stat = "identity") + theme_minimal() + 
+  theme(axis.text.y = element_text(size = 8)) + 
+  xlab("Vehicle Type") + ylab("Incidents") + 
+  ggtitle("Driver Inattention by Vehicle Type") + coord_flip()
+p11
+```
+<a href="#header">back to top</a>
+
+> Passenger vehicle is the type of car who contribute the biggest volume in accidents, especially for driver inattention or distraction.
+
+</br></br>
+
+## Using second vehicle code type and contribution factor 2
+
+```{r echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+type2 <- accidents %>% group_by(VEHICLE.TYPE.CODE.2) %>% 
+  count(CONTRIBUTING.FACTOR.VEHICLE.2) %>% arrange(desc(n))
+type2[type2 == ""] <- NA
+type2 <- na.omit(type2)
+type2 <- data.frame(type2)
+temp2 <- filter(type2, CONTRIBUTING.FACTOR.VEHICLE.2 != "Unspecified" & n > 150)
+
+p2 <- ggplot(temp2, aes(x = reorder(CONTRIBUTING.FACTOR.VEHICLE.2,n), y = n, 
+                        fill = VEHICLE.TYPE.CODE.2)) + 
+  geom_bar(stat = "identity") + theme_minimal() +
+  theme(axis.text.y = element_text(size = 8), 
+        legend.key.width = unit(0.2,"cm"), legend.key.height=unit(0.2,"cm"), 
+        legend.position = c(.5, .05), legend.justification = c(0, 0),
+        legend.background = element_rect(fill=alpha('white', 0.6)),
+        legend.text = element_text(size = 5.5),
+        legend.title = element_text(size = 6)) + 
+  xlab("Factor") + ylab("Incidents") + 
+  ggtitle("Incidents by Factor for Vehicle 2") +
+  coord_flip() + 
+  guides(fill = guide_legend(ncol = 1, title = "Vehicle Type")) 
+p2
+```
+<a href="#header">back to top</a>
+
+> Similar to the first vehicle type code, driver inattention makes up the majority of accident factors
+
+</br></br>
+
+## Using third vehicle code type and contributing factor 3
+
+```{r echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+type3 <- accidents %>% group_by(VEHICLE.TYPE.CODE.3) %>% 
+  count(CONTRIBUTING.FACTOR.VEHICLE.3) %>% 
+  arrange(desc(n))
+type3[type3 == ""] <- NA
+type3 <- na.omit(type3)
+type3 <- data.frame(type3)
+temp3 <- filter(type3, CONTRIBUTING.FACTOR.VEHICLE.3 != "Unspecified")
+
+p3 <- ggplot(temp3, aes(x = reorder(CONTRIBUTING.FACTOR.VEHICLE.3,n), y = n, 
+                        fill = VEHICLE.TYPE.CODE.3)) + 
+  geom_bar(stat = "identity") + theme_minimal() + 
+  theme(axis.text.y = element_text(size = 5.5), 
+       legend.key.width = unit(0.2,"cm"), legend.key.height=unit(0.2,"cm") , 
+       legend.position = c(0.6,.05), legend.justification = c(0, 0),
+       legend.background = element_rect(fill=alpha('white', 0.4)),
+       legend.text = element_text(size = 5),
+       legend.title = element_text(size = 6)) + 
+  xlab("Factor") + ylab("Incidents") + 
+  ggtitle("Incidents by Factor for Vehicle 3") + coord_flip() + 
+  guides(fill = guide_legend(ncol = 1, title = "Vehicle Type"))  
+p3
+```
+<a href="#header">back to top</a>
+
+> Past two vehicles, the third vehicle involved in the accident is usually caused by the other vehicles already involved
+
+</br></br>
+
+## Using fourth vehicle code type and contributing factor 4
+
+```{r echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+type4 <- accidents %>% group_by(VEHICLE.TYPE.CODE.4) %>% 
+  count(CONTRIBUTING.FACTOR.VEHICLE.4) %>%  arrange(desc(n))
+type4[type4 == ""] <- NA
+type4 <- na.omit(type4)
+type4 <- data.frame(type4)
+temp4 <- filter(type4, CONTRIBUTING.FACTOR.VEHICLE.4 != "Unspecified")
+
+p4 <- ggplot(temp4, aes(x = reorder(CONTRIBUTING.FACTOR.VEHICLE.4, n), y = n, 
+                        fill = VEHICLE.TYPE.CODE.4)) + 
+  geom_bar(stat = "identity") + theme_minimal() +
+  theme(axis.text.y = element_text(size = 6), 
+        legend.key.width = unit(0.2,"cm"), 
+        legend.key.height = unit(0.2,"cm"), 
+        legend.position = c(.55, .05), 
+        legend.justification = c(0, 0),
+        legend.background = element_rect(fill=alpha('white', 0.6)),
+        legend.text = element_text(size = 5.5),
+        legend.title = element_text(size = 6)) + 
+  xlab("Factor") + ylab("Incidents") + ggtitle("Incidents by Factor for Vehicle 4") +
+  coord_flip() + 
+  guides(fill = guide_legend(ncol = 1, title = "Vehicle Type")) 
+p4
+```
+<a href="#header">back to top</a>
+
+> Other vehicles are usually the cause for the fourth vehicle getting involved in an accident
+
+</br></br>
+
+## Using the last vehicle code type and contribution factor 5
+
+```{r echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+type5 <- accidents %>% group_by(VEHICLE.TYPE.CODE.5) %>% 
+  count(CONTRIBUTING.FACTOR.VEHICLE.5) %>% arrange(desc(n))
+type5[type5 == ""] <- NA
+type5 <- na.omit(type5)
+type5 <- data.frame(type5)
+temp5 <- filter(type5, CONTRIBUTING.FACTOR.VEHICLE.5 != "Unspecified")
+
+p5 <- ggplot(temp5, aes(x = reorder(CONTRIBUTING.FACTOR.VEHICLE.5,n), y = n, 
+                        fill = VEHICLE.TYPE.CODE.5)) + 
+  geom_bar(stat = "identity") + theme_minimal() +
+  theme(axis.text.y = element_text(size = 8), 
+        legend.key.width = unit(0.2,"cm"), 
+        legend.key.height = unit(0.2,"cm"),
+        legend.background = element_rect(fill=alpha('white', 0.6)),
+        legend.position = c(.57, .05), 
+        legend.justification = c(0, 0),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 6)) + 
+  xlab("Factor") + ylab("Incidents") + 
+  ggtitle("Incidents by Factor for Vehicle 5") +
+  coord_flip() + 
+  guides(fill = guide_legend(ncol = 1, title = "Vehicle Type")) 
+p5
+```
+<a href="#header">back to top</a>
+
+> Other vehicles are usually the cause for the fourth vehicle getting involved in an accident
+
+</br></br></br></br>
+
+# Relationship between time and borough for number of person injured
+```{r, echo=TRUE, message=FALSE, eval=TRUE, warning=F}
+accidents$hour = as.POSIXlt(as.POSIXlt(paste(Sys.Date(), accidents$TIME)))$hour
+accidents$daytime = ifelse(accidents$hour >= 7 & accidents$hour < 12
+                           , "Morning"
+                           , ifelse(accidents$hour >= 12 & accidents$hour < 18
+                                    , "Afternoon"
+                                    , ifelse(accidents$hour >= 18 & accidents$hour < 24
+                                             , "Evening"
+                                             , "Night")))
+
+
+accidents_daytime <- accidents %>% group_by(BOROUGH, daytime) %>% summarise(nb = sum(NUMBER.OF.PERSONS.INJURED, na.rm = TRUE))
+ggplot(accidents_daytime, aes(x = daytime, y = BOROUGH, fill = nb)) + geom_tile() + theme_minimal()
+```
+<a href="#header">back to top</a>
+
+> Brooklyn is the most risky area during the whole day, Staten Island is quite safe during afternoon. Night is always less dangerous than the other time in a day.
+
