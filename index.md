@@ -20,7 +20,8 @@
 ### Full Projects
 
 - [Loan Approval Analysis](/Loan Approval Analysis/credit.html)
-- [UniversityDB Database Design Project](UniversityDB/UniversityDB_Samaroo.pdf)
+- [UniversityDB Design Project](UniversityDB/UniversityDB_Samaroo.pdf)
+    - [UniversityDB SQL Code](UniversityDB/Group10_Database_Implementation.sql)
 - [Solving Sudoku Puzzles using AI](pdf/sudoku.pdf)
 - [Analyzing NYC Traffic Patterns](NYC Traffic Analysis/traffic.html)
 - [Air Quality Analysis](Air Quality Analysis/AsthmaUSAData.html)
